@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dynamic Anime Watch Tracker</title>
+    <style>
+        /* CSS for styling */
+        body {
+            font-family: sans-serif;
+            background-color: #f4f4f9;
+            color: #333;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: #fff;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            color: #E50914; 
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        #search-input {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 20px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box; 
+            font-size: 1em;
+        }
+        #loading-message {
+            text-align: center;
+            font-style: italic;
+            color: #E50914;
+        }
+        /* --- List Styles (No Change) --- */
+        .anime-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 0;
+            border-bottom: 1px solid #eee;
+            cursor: pointer; 
+            transition: background-color 0.2s;
+        }
+        .anime-item:hover {
+            background-color: #fafafa;
+        }
+        .anime-item:last-child {
+            border-bottom: none;
+        }
+        .anime-title {
+            font-size: 1.1em;
+            font-weight: 500;
+        }
+        .watched .anime-title {
+            text-decoration: line-through;
+            color: #888;
+        }
+        .status-box {
+            width: 20px;
+            height: 20px;
+            border: 2px solid #E50914;
+            border-radius: 4px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 16px;
+            color: white;
+            transition: background-color 0.2s, border-color 0.2s;
+        }
+        .watched .status-box {
+            background-color: #E50914;
+            border-color: #E50914;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Dynamic Anime Watch Tracker 📚</h1>
+
+        <input type="text" id="search-input" placeholder="Search for an anime title...">
+        
+        <p id="loading-message">Loading top anime list...</p>
+
+        <div id="anime-list">
+            </div>
+
+    </div>
+
+    <script>
+        // --- CONSTANTS AND DATA STORAGE ---
+        const API_URL = 'https://api.jikan.moe/v4/top/anime?limit=50'; // Fetch the top 50 anime
+        const WATCHED_STORAGE_KEY = 'animeWatchedList';
+
+        const animeListElement = document.getElementById('anime-list');
+        const searchInput = document.getElementById('search-input');
+        const loadingMessage = document.getElementById('loading-message');
+
+        // This array will hold the current full list of anime data
+        let fullAnimeData = []; 
+        
+        // This object stores the IDs of watched anime (e.g., { 1: true, 5: true })
+        let watchedStatus = JSON.parse(localStorage.getItem(WATCHED_STORAGE_KEY)) || {};
+
+        // --- API FETCHING FUNCTION ---
+        async function fetchAnimeData() {
+            try {
+                loadingMessage.textContent = "Loading top anime list...";
+                const response = await fetch(API_URL);
+                const data = await response.json();
+                
+                // Store the fetched data (using mal_id as the unique ID)
+                fullAnimeData = data.data.map(item => ({
+                    id: item.mal_id, // Unique ID from MyAnimeList
+                    title: item.title 
+                }));
+                
+                loadingMessage.style.display = 'none';
+                renderAnimeList(); 
+
+            } catch (error) {
+                console.error("Error fetching anime data:", error);
+                loadingMessage.textContent = "Failed to load anime list. Please try again later.";
+            }
+        }
+
+        // --- CORE FUNCTIONALITY ---
+
+        function renderAnimeList(searchTerm = '') {
+            animeListElement.innerHTML = ''; 
+            const lowerCaseSearchTerm = searchTerm.toLowerCase();
+
+            // 1. Filter the data based on the search term
+            const filteredData = fullAnimeData.filter(anime => 
+                anime.title.toLowerCase().includes(lowerCaseSearchTerm)
+            );
+
+            // 2. Render the filtered results
+            if (filteredData.length === 0 && searchTerm !== '') {
+                 animeListElement.innerHTML = '<p style="text-align: center; color: #888;">No anime found matching your search.</p>';
+                 return;
+            }
+
+            filteredData.forEach(anime => {
+                const isWatched = !!watchedStatus[anime.id]; // Check if ID exists in our watchedStatus object
+                
+                const item = document.createElement('div');
+                item.classList.add('anime-item');
+                item.dataset.id = anime.id;
+
+                if (isWatched) {
+                    item.classList.add('watched');
+                }
+
+                item.innerHTML = `
+                    <span class="anime-title">${anime.title}</span>
+                    <div class="status-box">
+                        ${isWatched ? '✔' : ''}
+                    </div>
+                `;
+
+                item.addEventListener('click', toggleWatchedStatus);
+                animeListElement.appendChild(item);
+            });
+        }
+
+        function toggleWatchedStatus(event) {
+            const clickedItem = event.currentTarget;
+            const animeId = parseInt(clickedItem.dataset.id);
+
+            // Toggle the status in the watchedStatus object
+            if (watchedStatus[animeId]) {
+                delete watchedStatus[animeId]; // Remove if watched (toggle to unwatched)
+            } else {
+                watchedStatus[animeId] = true; // Add if unwatched (toggle to watched)
+            }
+            
+            // 3. Save the updated watched list to the browser's Local Storage
+            localStorage.setItem(WATCHED_STORAGE_KEY, JSON.stringify(watchedStatus));
+
+            // 4. Re-render the list to reflect the change, preserving the current search term
+            renderAnimeList(searchInput.value); 
+        }
+
+        // --- SEARCH LOGIC ---
+        
+        searchInput.addEventListener('input', (event) => {
+            const currentSearchTerm = event.target.value;
+            renderAnimeList(currentSearchTerm);
+        });
+
+        // --- INITIALIZATION ---
+        
+        // Start by fetching the live data!
+        fetchAnimeData();
+    </script>
+
+</body>
+</html>
+
